@@ -1,34 +1,21 @@
-# app/llm.py
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
 from typing import List
+import requests
 
-MODEL_ID = "google/flan-t5-small"
-
-tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
-model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_ID)
-
-generator = pipeline(
-    "text2text-generation",
-    model=model,
-    tokenizer=tokenizer,
-    device=0 if model.device.type == "cuda" else -1,
-    model_kwargs={"torch_dtype": "float32"}
-)
+def build_prompt(question: str, context_chunks: List[str]) -> str:
+    context = "\n".join(f"- {c}" for c in context_chunks)
+    return f"""Context:\n{context}\n\nQuestion: {question}\nAnswer:"""
 
 def generate_answer(question: str, context_chunks: List[str]) -> str:
-    context = "\n".join(context_chunks)
+    prompt = build_prompt(question, context_chunks)
 
-    # ✂️ Truncate long context
-    if len(context) > 1000:
-        context = context[:1000]
-
-    prompt = f"Context: {context}\n\nQuestion: {question}\nAnswer:"
-
-    result = generator(
-        prompt,
-        max_new_tokens=200,
-        do_sample=False,
-        truncation=True
+    # Call free hosted model
+    response = requests.post(
+        "https://api-inference.huggingface.co/models/google/flan-t5-small",
+        headers={"Accept": "application/json"},
+        json={"inputs": prompt}
     )
 
-    return result[0]["generated_text"]
+    try:
+        return response.json()[0]["generated_text"]
+    except Exception:
+        return "Error or no response from model"
